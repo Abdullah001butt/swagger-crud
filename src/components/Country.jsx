@@ -1,14 +1,12 @@
 import React, { useState, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "react-query";
 import countryApi from "../api/countryApi";
+import { nanoid } from "nanoid";
 
 const Country = () => {
   const { data, error, isLoading } = useQuery(
     "countries", // key
-    countryApi.getAllCountries, // function to fetch data
-    {
-      enabled: true, // <--- Add this option
-    }
+    countryApi.getAllCountries // function to fetch data
   );
   console.log("Data:", data);
 
@@ -19,7 +17,10 @@ const Country = () => {
 
   const { mutate: createCountry } = useMutation(
     "createCountry", // key
-    countryApi.createCountry, // function to create country
+    async (newCountry) => {
+      const countryId = nanoid();
+      return countryApi.createCountry({ ...newCountry, id: countryId });
+    },
     {
       onSuccess: () => {
         queryClient.invalidateQueries("countries"); // invalidate cache
@@ -49,7 +50,7 @@ const Country = () => {
 
   useEffect(() => {
     if (editedCountry) {
-      updateCountry(editedCountry.id, editedCountry);
+      updateCountry(editedCountry.id, editedCountry); // Pass editedCountry directly
     }
   }, [editedCountry]);
 
@@ -60,7 +61,7 @@ const Country = () => {
   };
 
   const handleEdit = (country) => {
-    setEditedCountry(country);
+    setEditedCountry({ ...country }); // Set the editedCountry state with the country data
   };
 
   const handleDelete = (id) => {
@@ -68,11 +69,26 @@ const Country = () => {
   };
 
   if (isLoading) {
-    return <div>Loading...</div>;
+    return (
+      <div className="flex justify-center items-center h-screen">
+        <div
+          className="spinner-border animate-spin inline-block w-8 h-8 border-4 rounded-full"
+          role="status"
+        >
+          <span className="sr-only">Loading...</span>
+        </div>
+      </div>
+    );
   }
 
   if (error) {
-    return <div>Error: {error.message}</div>;
+    return (
+      <div className="flex justify-center items-center h-screen bg-red-100">
+        <div className="text-lg font-bold text-red-600">
+          <i className="fas fa-exclamation-triangle" /> Error: {error.message}
+        </div>
+      </div>
+    );
   }
 
   return (
@@ -135,7 +151,18 @@ const Country = () => {
         ))}
       </ul>
       {editedCountry && (
-        <form className="flex flex-wrap mb-4">
+        <form
+          onSubmit={(event) => {
+            event.preventDefault();
+            const updatedCountry = {
+              ...editedCountry,
+              name: event.target.name.value,
+              code: event.target.code.value,
+            };
+            updateCountry(updatedCountry.id, updatedCountry);
+          }}
+          className="flex flex-wrap mb-4"
+        >
           <input
             type="text"
             value={editedCountry.name}
@@ -144,6 +171,7 @@ const Country = () => {
             }
             placeholder="Name"
             className="w-full p-2 pl-10 text-sm text-gray-700 border border-gray-300 rounded-md"
+            name="name"
           />
           <input
             type="text"
@@ -153,6 +181,7 @@ const Country = () => {
             }
             placeholder="Code"
             className="w-full p-2 pl-10 text-sm text-gray-700 border border-gray-300 rounded-md"
+            name="code"
           />
           <button
             type="submit"

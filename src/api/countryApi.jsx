@@ -1,10 +1,10 @@
 import axios from "axios";
-import { v4 as uuidv4 } from "uuid";
+import { nanoid } from "nanoid";
 
 const apiUrl = "http://207.180.230.73/Ecommerce/v1";
 
 const countryApi = {
-  getAllCountries: async () => {
+  async getAllCountries() {
     try {
       const response = await axios.get(`${apiUrl}/country`);
       return response.data;
@@ -13,7 +13,8 @@ const countryApi = {
       throw error;
     }
   },
-  getCountryById: async (id) => {
+
+  async getCountryById(id) {
     try {
       const response = await axios.get(`${apiUrl}/country/${id}`);
       return response.data;
@@ -22,7 +23,8 @@ const countryApi = {
       throw error;
     }
   },
-  getCountryByName: async (name) => {
+
+  async getCountryByName(name) {
     try {
       const response = await axios.get(`${apiUrl}/country/${name}/view`);
       return response.data;
@@ -31,41 +33,53 @@ const countryApi = {
       throw error;
     }
   },
-  createCountry: async (data) => {
-    try {
-      // Generate a new UUID
-      const countryId = uuidv4();
 
-      // Create a new country with the generated UUID
+  async createCountry(data) {
+    try {
+      const countryId = nanoid();
+      console.log("Request payload:", { ...data, id: countryId }); // <--- Add this line
       const response = await axios.post(
         `${apiUrl}/country`,
-        { ...data, id: countryId }, // removed JSON.stringify
+        { ...data, id: countryId },
         {
           headers: {
             "Content-Type": "application/json",
           },
         }
       );
-
+      console.log("Response from API endpoint:", response.data); // <--- Add this line
       return response.data;
     } catch (error) {
-      console.error(`Error creating country:`, error);
+      console.error("Error creating country:", error);
       throw error;
     }
   },
 
-  updateCountry: async (countryId, data) => {
-    //eror here
+  async updateCountry(countryId, data) {
     try {
-      console.log("Updating country with id", countryId, "and data:", data);
-      const response = await axios.put(`${apiUrl}/country/${countryId}`, data);
+      console.log(`Updating country with id ${countryId} and data:`, data);
+      console.log("Data object:", data); // <--- Add this line
+      if (!data) {
+        throw new Error("Data object is undefined");
+      }
+      const response = await axios.put(`${apiUrl}/country/${countryId}`, data, {
+        headers: {
+          "Content-Type": "application/json",
+        },
+      });
+      console.log("Response:", response);
       return response.data;
     } catch (error) {
       console.error(`Error updating country with id ${countryId}:`, error);
+      if (error.response) {
+        console.error("Response data:", error.response.data);
+        console.error("Response status:", error.response.status);
+        console.error("Response headers:", error.response.headers);
+      }
       throw error;
     }
   },
-  deleteCountry: async (id) => {
+  async deleteCountry(id) {
     try {
       const response = await axios.delete(`${apiUrl}/country/${id}`);
       return response.data;
