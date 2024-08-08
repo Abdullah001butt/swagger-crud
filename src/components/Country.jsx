@@ -1,7 +1,14 @@
-import React, { useState, useEffect } from "react";
+import React, { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "react-query";
+import { Formik, Form, Field, ErrorMessage } from "formik";
+import * as Yup from "yup";
 import countryApi from "../api/countryApi";
 import { nanoid } from "nanoid";
+
+const formikSchema = Yup.object().shape({
+  name: Yup.string().required("Name is required"),
+  code: Yup.string().required("Code is required"),
+});
 
 const Country = () => {
   const { data, error, isLoading } = useQuery(
@@ -10,8 +17,8 @@ const Country = () => {
   );
   const queryClient = useQueryClient();
 
-  const [newCountry, setNewCountry] = useState({ name: "", code: "" });
   const [editedCountry, setEditedCountry] = useState(null);
+  const [isEditing, setIsEditing] = useState(false);
 
   const { mutate: createCountry } = useMutation(
     "createCountry",
@@ -27,14 +34,16 @@ const Country = () => {
   const { mutate: updateCountry } = useMutation(
     "updateCountry",
     ({ id, data }) => {
-      console.log("Mutation Parameters:", { id, data });
       if (!id || !data) {
         throw new Error("ID and data are required to update a country");
       }
       return countryApi.updateCountry({ id, data });
     },
     {
-      onSuccess: () => queryClient.invalidateQueries("countries"),
+      onSuccess: () => {
+        queryClient.invalidateQueries("countries");
+        setIsEditing(false); // Hide the form after a successful update
+      },
     }
   );
 
@@ -46,23 +55,9 @@ const Country = () => {
     }
   );
 
-  useEffect(() => {
-    if (editedCountry) {
-      updateCountry({ id: editedCountry.id, data: newCountry });
-    }
-  }, [editedCountry]);
-
-  const handleSubmit = (event) => {
-    event.preventDefault();
-    const countryId = nanoid();
-    createCountry({ ...newCountry, id: countryId });
-    console.log("Created Country with ID:", countryId);
-  };
-
   const handleEdit = (country) => {
-    console.log("Editing Country:", country);
     setEditedCountry(country);
-    setNewCountry({ name: country.name, code: country.code });
+    setIsEditing(true); // Show the form when editing
   };
 
   const handleDelete = (id) => {
@@ -70,73 +65,106 @@ const Country = () => {
   };
 
   if (isLoading) {
-    return <div>Loading...</div>;
+    return <div className="text-center text-gray-500">Loading...</div>;
   }
 
   if (error) {
-    return <div>Error: {error.message}</div>;
+    return (
+      <div className="text-center text-red-500">Error: {error.message}</div>
+    );
   }
 
   return (
-    <div>
-      <h1>Countries</h1>
-      <form onSubmit={handleSubmit}>
-        <input
-          type="text"
-          value={newCountry.name || ""}
-          onChange={(event) =>
-            setNewCountry({ ...newCountry, name: event.target.value })
+    <div className="max-w-2xl mx-auto p-4">
+      <h1 className="text-2xl font-bold mb-4">Countries</h1>
+      <Formik
+        initialValues={{ name: "", code: "" }}
+        validationSchema={formikSchema}
+        onSubmit={(values, { resetForm }) => {
+          if (isEditing && editedCountry) {
+            updateCountry({ id: editedCountry.id, data: values });
+          } else {
+            const countryId = nanoid();
+            createCountry({ ...values, id: countryId });
           }
-          placeholder="Name"
-        />
-        <input
-          type="text"
-          value={newCountry.code || ""}
-          onChange={(event) =>
-            setNewCountry({ ...newCountry, code: event.target.value })
-          }
-          placeholder="Code"
-        />
-        <button type="submit">Create Country</button>
-      </form>
-      <ul>
+          resetForm();
+          setEditedCountry(null);
+        }}
+      >
+        {({ resetForm }) => (
+          <Form className="mb-4">
+            <div className="mb-2">
+              <Field
+                type="text"
+                name="name"
+                placeholder="Name"
+                className="w-full p-2 border border-gray-300 rounded"
+              />
+              <ErrorMessage
+                name="name"
+                component="div"
+                className="text-red-500 text-sm"
+              />
+            </div>
+            <div className="mb-2">
+              <Field
+                type="text"
+                name="code"
+                placeholder="Code"
+                className="w-full p-2 border border-gray-300 rounded"
+              />
+              <ErrorMessage
+                name="code"
+                component="div"
+                className="text-red-500 text-sm"
+              />
+            </div>
+            <button
+              type="submit"
+              className="w-full bg-blue-500 text-white p-2 rounded hover:bg-blue-600"
+            >
+              {isEditing ? "Update Country" : "Create Country"}
+            </button>
+            {isEditing && (
+              <button
+                type="button"
+                onClick={() => {
+                  resetForm();
+                  setIsEditing(false);
+                  setEditedCountry(null);
+                }}
+                className="w-full mt-2 bg-gray-500 text-white p-2 rounded hover:bg-gray-600"
+              >
+                Cancel
+              </button>
+            )}
+          </Form>
+        )}
+      </Formik>
+      <ul className="space-y-2">
         {data.data.map((country) => (
-          <li key={country.id}>
+          <li
+            key={country.id}
+            className="p-2 border border-gray-300 rounded flex justify-between items-center"
+          >
             <span>{country.name}</span>
-            <button onClick={() => handleEdit(country)}>Edit</button>
-            <button onClick={() => handleDelete(country.id)}>Delete</button>
+            <div>
+              <button
+                onClick={() => handleEdit(country)}
+                className="bg-yellow-500 text-white px-2 py-1 rounded mr-2 hover:bg-yellow-600"
+              >
+                Edit
+              </button>
+              <button
+                onClick={() => handleDelete(country.id)}
+                className="bg-red-500 text-white px-2 py-1 rounded hover:bg-red-600"
+              >
+                Delete
+              </button>
+            </div>
           </li>
         ))}
       </ul>
-      {editedCountry && (
-        <form
-          onSubmit={(event) => {
-            event.preventDefault();
-            updateCountry({
-              id: editedCountry.id,
-              data: { name: editedCountry.name, code: editedCountry.code },
-            });
-          }}
-        >
-          <input
-            type="text"
-            value={editedCountry.name || ""}
-            onChange={(event) =>
-              setEditedCountry({ ...editedCountry, name: event.target.value })
-            }
-            placeholder="Name"
-          />
-          <input
-            type="text"
-            value={editedCountry.code || ""}
-            onChange={(event) =>
-              setEditedCountry({ ...editedCountry, code: event.target.value })
-            }
-            placeholder="Code"
-          />
-          <button type="submit">Update Country</button>
-        </form>
-      )}
     </div>
   );
 };
