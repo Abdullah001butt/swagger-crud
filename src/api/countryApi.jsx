@@ -1,5 +1,4 @@
 import axios from "axios";
-import { nanoid } from "nanoid";
 
 const apiUrl = "http://207.180.230.73/Ecommerce/v1";
 
@@ -25,9 +24,8 @@ const countryApi = {
 
   // Create a new country
   async createCountry(data) {
-    const countryId = nanoid();
     return axios
-      .post(`${apiUrl}/country`, { ...data, id: countryId })
+      .post(`${apiUrl}/country`, data)
       .then((response) => response.data);
   },
 

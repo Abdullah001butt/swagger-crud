@@ -3,95 +3,151 @@ import { useQuery, useMutation, useQueryClient } from "react-query";
 import { Formik, Form, Field, ErrorMessage } from "formik";
 import * as Yup from "yup";
 import countryApi from "../api/countryApi";
-import { nanoid } from "nanoid";
+import EditDialog from "../Dialogs/EditDialog";
+import DeleteDialog from "../Dialogs/DeleteDialog";
+import EditIcon from "@mui/icons-material/Edit";
+import DeleteIcon from "@mui/icons-material/Delete";
 
 const formikSchema = Yup.object().shape({
   name: Yup.string().required("Name is required"),
-  code: Yup.string().required("Code is required"),
+  flag: Yup.object().shape({
+    file_name: Yup.string().required("Flag file name is required"),
+    file_content: Yup.string().required("Flag file content is required"),
+    file_extension: Yup.string().required("Flag file extension is required"),
+  }),
 });
 
-const Country = () => {
+const Country = ({ selectedImage }) => {
+  const queryClient = useQueryClient();
   const { data, error, isLoading } = useQuery(
     "countries",
     countryApi.getAllCountries
   );
-  const queryClient = useQueryClient();
 
   const [editedCountry, setEditedCountry] = useState(null);
   const [isEditing, setIsEditing] = useState(false);
+  const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
 
-  const { mutate: createCountry } = useMutation(
-    "createCountry",
-    async (newCountry) => {
-      const countryId = nanoid();
-      return countryApi.createCountry({ ...newCountry, id: countryId });
-    },
-    {
-      onSuccess: () => queryClient.invalidateQueries("countries"),
-    }
-  );
+  const createCountry = useMutation(countryApi.createCountry, {
+    onSuccess: () => queryClient.invalidateQueries("countries"),
+  });
 
-  const { mutate: updateCountry } = useMutation(
-    "updateCountry",
-    ({ id, data }) => {
-      if (!id || !data) {
-        throw new Error("ID and data are required to update a country");
-      }
-      return countryApi.updateCountry({ id, data });
-    },
+  const updateCountry = useMutation(
+    ({ id, data }) => countryApi.updateCountry({ id, data }),
     {
       onSuccess: () => {
         queryClient.invalidateQueries("countries");
-        setIsEditing(false); // Hide the form after a successful update
+        setIsEditing(false);
+        setEditedCountry(null);
       },
     }
   );
 
-  const { mutate: deleteCountry } = useMutation(
-    "deleteCountry",
-    countryApi.deleteCountry,
-    {
-      onSuccess: () => queryClient.invalidateQueries("countries"),
-    }
-  );
+  const deleteCountry = useMutation(countryApi.deleteCountry, {
+    onSuccess: () => queryClient.invalidateQueries("countries"),
+  });
 
   const handleEdit = (country) => {
     setEditedCountry(country);
-    setIsEditing(true); // Show the form when editing
+    setIsEditing(true);
   };
 
-  const handleDelete = (id) => {
-    deleteCountry(id);
+  const handleDelete = (id) => deleteCountry.mutate(id);
+
+  const handleFileChange = (event, setFieldValue) => {
+    const file = event.target.files[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.readAsDataURL(file);
+      reader.onload = () => {
+        const base64String = reader.result.split(",")[1];
+        setFieldValue("flag.file_name", file.name);
+        setFieldValue("flag.file_content", base64String);
+        setFieldValue("flag.file_extension", file.name.split(".").pop());
+      };
+      reader.onerror = (error) => console.error("Error reading file:", error);
+    }
+  };
+
+  const handleSave = (updatedCountry) => {
+    updateCountry.mutate({
+      id: updatedCountry.id,
+      data: {
+        ...updatedCountry,
+        flag: {
+          ...updatedCountry.flag,
+          file_content: selectedImage,
+          file_name: updatedCountry.flag.file_name || "default_name.png", // Ensure file_name is set
+        },
+      },
+    });
   };
 
   if (isLoading) {
-    return <div className="text-center text-gray-500">Loading...</div>;
+    return (
+      <div className="flex justify-center items-center h-screen">
+        <div
+          className="spinner-border animate-spin inline-block w-8 h-8 border-4 rounded-full"
+          role="status"
+        >
+          <span className="sr-only">Loading...</span>
+        </div>
+        <p className="text-lg font-medium text-gray-600 ml-4">Loading...</p>
+      </div>
+    );
   }
 
   if (error) {
     return (
-      <div className="text-center text-red-500">Error: {error.message}</div>
+      <div className="flex justify-center items-center h-screen bg-red-100 p-4 rounded">
+        <svg
+          xmlns="http://www.w3.org/2000/svg"
+          className="h-12 w-12 text-red-600"
+          fill="none"
+          viewBox="0 0 24 24"
+          stroke="currentColor"
+        >
+          <path
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            strokeWidth={2}
+            d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+          />
+        </svg>
+        <p className="text-lg font-medium text-red-600">
+          Error loading countries
+        </p>
+      </div>
     );
   }
+
+  const countries = data?.data || [];
 
   return (
     <div className="max-w-2xl mx-auto p-4">
       <h1 className="text-2xl font-bold mb-4">Countries</h1>
       <Formik
-        initialValues={{ name: "", code: "" }}
+        initialValues={{
+          name: "",
+          flag: {
+            file_name: "",
+            file_content: "",
+            file_extension: "",
+          },
+        }}
         validationSchema={formikSchema}
         onSubmit={(values, { resetForm }) => {
           if (isEditing && editedCountry) {
-            updateCountry({ id: editedCountry.id, data: values });
+            updateCountry.mutate({ id: editedCountry.id, data: values });
           } else {
-            const countryId = nanoid();
-            createCountry({ ...values, id: countryId });
+            createCountry.mutate(values);
           }
           resetForm();
+          setIsEditing(false);
           setEditedCountry(null);
         }}
       >
-        {({ resetForm }) => (
+        {({ setFieldValue }) => (
           <Form className="mb-4">
             <div className="mb-2">
               <Field
@@ -107,64 +163,82 @@ const Country = () => {
               />
             </div>
             <div className="mb-2">
-              <Field
-                type="text"
-                name="code"
-                placeholder="Code"
+              <input
+                type="file"
+                name="flag.file_content"
+                onChange={(event) => handleFileChange(event, setFieldValue)}
                 className="w-full p-2 border border-gray-300 rounded"
               />
               <ErrorMessage
-                name="code"
+                name="flag.file_content"
                 component="div"
                 className="text-red-500 text-sm"
               />
             </div>
+            <Field type="hidden" name="flag.file_name" />
+            <Field type="hidden" name="flag.file_content" />
+            <Field type="hidden" name="flag.file_extension" />
             <button
               type="submit"
-              className="w-full bg-blue-500 text-white p-2 rounded hover:bg-blue-600"
+              className="bg-blue-500 text-white p-2 rounded"
             >
-              {isEditing ? "Update Country" : "Create Country"}
+              {isEditing ? "Update Country" : "Add Country"}
             </button>
-            {isEditing && (
-              <button
-                type="button"
-                onClick={() => {
-                  resetForm();
-                  setIsEditing(false);
-                  setEditedCountry(null);
-                }}
-                className="w-full mt-2 bg-gray-500 text-white p-2 rounded hover:bg-gray-600"
-              >
-                Cancel
-              </button>
-            )}
           </Form>
         )}
       </Formik>
-      <ul className="space-y-2">
-        {data.data.map((country) => (
+      <ul className="divide-y divide-gray-200 overflow-auto h-80 w-100 bg-white rounded shadow-md p-4">
+        {countries.map((country, index) => (
           <li
             key={country.id}
-            className="p-2 border border-gray-300 rounded flex justify-between items-center"
+            className="flex items-center justify-between p-4 hover:bg-gray-100"
           >
-            <span>{country.name}</span>
+            <div className="flex items-center">
+              <span className="text-lg font-medium pr-4">{index + 1}.</span>
+              <img
+                src={country.flag.file_path}
+                alt={country.name}
+                width={50}
+                className="mr-4 rounded"
+              />
+              <span className="text-lg font-medium">{country.name}</span>
+            </div>
             <div>
               <button
                 onClick={() => handleEdit(country)}
-                className="bg-yellow-500 text-white px-2 py-1 rounded mr-2 hover:bg-yellow-600"
+                className="bg-yellow-500 text-white px-3 py-1 rounded mr-2 hover:bg-yellow-600"
               >
-                Edit
+                <EditIcon />
               </button>
               <button
-                onClick={() => handleDelete(country.id)}
-                className="bg-red-500 text-white px-2 py-1 rounded hover:bg-red-600"
+                onClick={() => {
+                  setIsDeleteDialogOpen(true);
+                  setEditedCountry(country);
+                }}
+                className="bg-red-500 text-white px-3 py-1 rounded hover:bg-red-600"
               >
-                Delete
+                <DeleteIcon />
               </button>
             </div>
           </li>
         ))}
       </ul>
+      {editedCountry && (
+        <>
+          <EditDialog
+            open={isEditing}
+            handleClose={() => setIsEditing(false)}
+            handleSave={handleSave}
+            country={editedCountry}
+          />
+          <DeleteDialog
+            open={isDeleteDialogOpen}
+            handleClose={() => setIsDeleteDialogOpen(false)}
+            handleDelete={handleDelete}
+            country={editedCountry}
+          />
+        </>
+      )}
     </div>
   );
 };
