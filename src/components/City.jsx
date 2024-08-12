@@ -1,31 +1,52 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "react-query";
 import { Formik, Form, Field, ErrorMessage } from "formik";
 import * as Yup from "yup";
 import cityApi from "../api/cityApi";
 import countryApi from "../api/countryApi"; // Import country API
-import EditDialog from "../Dialogs/EditDialog";
-import DeleteDialog from "../Dialogs/DeleteDialog";
+import CityEditDialog from "../Dialogs/CityEditDialog";
+import CityDeleteDialog from "../Dialogs/CityDeleteDialog";
 import EditIcon from "@mui/icons-material/Edit";
 import DeleteIcon from "@mui/icons-material/Delete";
+import { MenuItem, TextField } from "@mui/material";
 
 const formikSchema = Yup.object().shape({
   name: Yup.string().required("Name is required"),
-  countryId: Yup.number().required("Country is required"), // Add country ID validation
+  countryId: Yup.number().required("Country is required"),
 });
 
 const City = () => {
   const queryClient = useQueryClient();
-  const { data: countries } = useQuery("countries", countryApi.getAllCountries); // Fetch all countries
+  const { data: countries, isLoading: isLoadingCountries } = useQuery(
+    "countries",
+    countryApi.getAllCountries
+  ); // Fetch all countries
   const { data, error, isLoading } = useQuery("cities", cityApi.getAllCities);
 
   const [editedCity, setEditedCity] = useState(null);
   const [isEditing, setIsEditing] = useState(false);
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
 
-  const createCity = useMutation(cityApi.createCity, {
-    onSuccess: () => queryClient.invalidateQueries("cities"),
-  });
+  useEffect(() => {
+    console.log("Countries:", countries?.data);
+  }, [countries]);
+
+  const createCity = useMutation(
+    async (data) => {
+      const country = countries?.data?.find((c) => c.id === data.countryId);
+      if (!country) {
+        throw new Error("Country not found");
+      }
+      return cityApi.createCity(data);
+    },
+    {
+      onSuccess: () => queryClient.invalidateQueries("cities"),
+      onError: (error) => {
+        console.error("Error creating city:", error);
+        alert(error.message);
+      },
+    }
+  );
 
   const updateCity = useMutation(
     ({ id, data }) => cityApi.updateCity({ id, data }),
@@ -35,11 +56,19 @@ const City = () => {
         setIsEditing(false);
         setEditedCity(null);
       },
+      onError: (error) => {
+        console.error("Error updating city:", error);
+        alert(error.message);
+      },
     }
   );
 
   const deleteCity = useMutation(cityApi.deleteCity, {
     onSuccess: () => queryClient.invalidateQueries("cities"),
+    onError: (error) => {
+      console.error("Error deleting city:", error);
+      alert(error.message);
+    },
   });
 
   const handleEdit = (city) => {
@@ -50,31 +79,27 @@ const City = () => {
   const handleDelete = (id) => deleteCity.mutate(id);
 
   const handleSave = (updatedCity) => {
-    updateCity
-      .mutate({
-        id: updatedCity.id,
-        data: {
-          ...updatedCity,
-          countryId: updatedCity.countryId,
-        },
-      })
-      .then((response) => {
-        if (!response.success) {
-          // Display an error message to the user
-          alert(response.message);
-        } else {
-          // City updated successfully
-          setIsEditing(false);
-          setEditedCity(null);
-        }
-      })
-      .catch((error) => {
-        // Handle any unexpected errors
-        console.error(error);
-      });
+    updateCity.mutate({
+      id: updatedCity.id,
+      data: {
+        ...updatedCity,
+      },
+    });
   };
 
-  if (isLoading) {
+  const handleSubmit = (values, { resetForm }) => {
+    console.log("Values being sent:", values);
+    if (isEditing && editedCity) {
+      updateCity.mutate({ id: editedCity.id, data: values });
+    } else {
+      createCity.mutate(values);
+    }
+    resetForm();
+    setIsEditing(false);
+    setEditedCity(null);
+  };
+
+  if (isLoading || isLoadingCountries) {
     return (
       <div className="flex justify-center items-center h-screen">
         <div
@@ -104,22 +129,38 @@ const City = () => {
       <Formik
         initialValues={{
           name: "",
-          countryId: "", // Initialize country ID field
+          countryId: "",
         }}
         validationSchema={formikSchema}
-        onSubmit={(values, { resetForm }) => {
-          if (isEditing && editedCity) {
-            updateCity.mutate({ id: editedCity.id, data: values });
-          } else {
-            createCity.mutate(values);
-          }
-          resetForm();
-          setIsEditing(false);
-          setEditedCity(null);
-        }}
+        onSubmit={handleSubmit}
       >
-        {({ setFieldValue }) => (
+        {({ values, handleChange }) => (
           <Form className="mb-4">
+            {!isEditing && (
+              <div className="mb-2">
+                <Field
+                  as={TextField}
+                  select
+                  name="countryId"
+                  label="Country"
+                  value={values.countryId}
+                  onChange={handleChange}
+                  fullWidth
+                  margin="normal"
+                >
+                  {countries?.data.map((country) => (
+                    <MenuItem key={country.id} value={country.id}>
+                      {country.name}
+                    </MenuItem>
+                  ))}
+                </Field>
+                <ErrorMessage
+                  name="countryId"
+                  component="div"
+                  className="text-red-500 text-sm"
+                />
+              </div>
+            )}
             <div className="mb-2">
               <Field
                 type="text"
@@ -129,26 +170,6 @@ const City = () => {
               />
               <ErrorMessage
                 name="name"
-                component="div"
-                className="text-red-500 text-sm"
-              />
-            </div>
-            <div className="mb-2">
-              <label>Country:</label>
-              <Field
-                as="select"
-                name="countryId"
-                className="w-full p-2 border border-gray-300 rounded"
-              >
-                <option value="">Select a country</option>
-                {countries?.data?.map((country) => (
-                  <option key={country.id} value={country.id}>
-                    {country.name}
-                  </option>
-                ))}
-              </Field>
-              <ErrorMessage
-                name="countryId"
                 component="div"
                 className="text-red-500 text-sm"
               />
@@ -194,13 +215,13 @@ const City = () => {
       </ul>
       {editedCity && (
         <>
-          <EditDialog
+          <CityEditDialog
             open={isEditing}
             handleClose={() => setIsEditing(false)}
             handleSave={handleSave}
             city={editedCity}
           />
-          <DeleteDialog
+          <CityDeleteDialog
             open={isDeleteDialogOpen}
             handleClose={() => setIsDeleteDialogOpen(false)}
             handleDelete={handleDelete}
