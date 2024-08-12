@@ -33,7 +33,9 @@ const City = () => {
 
   const createCity = useMutation(
     async (data) => {
+      console.log("Creating city with data:", data);
       const country = countries?.data?.find((c) => c.id === data.countryId);
+      console.log("Matched country:", country);
       if (!country) {
         throw new Error("Country not found");
       }
