@@ -4,8 +4,12 @@ const apiUrl = "http://207.180.230.73/Ecommerce/v1";
 
 const cityApi = {
   // Get all cities
-  async getAllCities() {
-    return axios.get(`${apiUrl}/city`).then((response) => response.data);
+  async getAllCities({ pageIndex, pageSize }) {
+    return axios
+      .get(`${apiUrl}/city`, {
+        params: { pageIndex, pageSize },
+      })
+      .then((response) => response.data);
   },
 
   // Get city by ID

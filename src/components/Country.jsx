@@ -6,15 +6,20 @@ import DeleteDialog from "../Dialogs/DeleteDialog";
 import AddDialog from "../Dialogs/AddDialog";
 import EditIcon from "@mui/icons-material/Edit";
 import DeleteIcon from "@mui/icons-material/Delete";
+import TablePagination from "@mui/material/TablePagination";
 
 const Country = ({ selectedImage }) => {
   const queryClient = useQueryClient();
-  const [pageIndex, setPageIndex] = useState(1); // Set initial page index to 1
-  const [pageSize, setPageSize] = useState(3); // Set page size to 3
+  const [page, setPage] = useState(0); // MUI TablePagination uses 0-based index
+  const [rowsPerPage, setRowsPerPage] = useState(3); // Set initial rows per page
 
   const { data, error, isLoading, isFetching } = useQuery(
-    ["countries", pageIndex],
-    () => countryApi.getAllCountries({ pageIndex, pageSize }),
+    ["countries", page, rowsPerPage],
+    () =>
+      countryApi.getAllCountries({
+        pageIndex: page + 1,
+        pageSize: rowsPerPage,
+      }),
     { keepPreviousData: true }
   );
 
@@ -78,6 +83,15 @@ const Country = ({ selectedImage }) => {
         },
       },
     });
+  };
+
+  const handleChangePage = (event, newPage) => {
+    setPage(newPage);
+  };
+
+  const handleChangeRowsPerPage = (event) => {
+    setRowsPerPage(parseInt(event.target.value, 10));
+    setPage(0); // Reset to first page
   };
 
   if (isLoading) {
@@ -177,27 +191,14 @@ const Country = ({ selectedImage }) => {
           </li>
         ))}
       </ul>
-      <div className="flex justify-between items-center mt-4">
-        <button
-          onClick={() => setPageIndex((old) => Math.max(old - 1, 1))}
-          disabled={pageIndex === 1}
-          className="bg-gradient-to-r from-green-400 to-blue-500 text-white font-semibold py-2 px-4 rounded shadow-md hover:from-green-500 hover:to-blue-600 transition duration-300 disabled:opacity-50"
-        >
-          Previous
-        </button>
-        <span>Page {pageIndex}</span>
-        <button
-          onClick={() => {
-            if (!isFetching && countries.length === pageSize) {
-              setPageIndex((old) => old + 1);
-            }
-          }}
-          disabled={isFetching || countries.length < pageSize}
-          className="bg-gradient-to-r from-green-400 to-blue-500 text-white font-semibold py-2 px-4 rounded shadow-md hover:from-green-500 hover:to-blue-600 transition duration-300 disabled:opacity-50"
-        >
-          Next
-        </button>
-      </div>
+      <TablePagination
+        component="div"
+        count={totalPages * rowsPerPage} // Assuming totalPages is the total number of pages
+        page={page}
+        onPageChange={handleChangePage}
+        rowsPerPage={rowsPerPage}
+        onRowsPerPageChange={handleChangeRowsPerPage}
+      />
       {editedCountry && (
         <>
           <EditDialog

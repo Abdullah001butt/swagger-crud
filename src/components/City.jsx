@@ -7,14 +7,23 @@ import CityDeleteDialog from "../Dialogs/CityDeleteDialog";
 import CityAddDialog from "../Dialogs/CityAddDialog";
 import EditIcon from "@mui/icons-material/Edit";
 import DeleteIcon from "@mui/icons-material/Delete";
+import CloseIcon from "@mui/icons-material/Close";
+import TablePagination from "@mui/material/TablePagination";
 
 const City = () => {
   const queryClient = useQueryClient();
+  const [page, setPage] = useState(0); // MUI TablePagination uses 0-based index
+  const [rowsPerPage, setRowsPerPage] = useState(3); // Set initial rows per page
+
   const { data: countries, isLoading: isLoadingCountries } = useQuery(
     "countries",
     countryApi.getAllCountries
   ); // Fetch all countries
-  const { data, error, isLoading } = useQuery("cities", cityApi.getAllCities);
+  const { data, error, isLoading, isFetching } = useQuery(
+    ["cities", page, rowsPerPage],
+    () => cityApi.getAllCities({ pageIndex: page + 1, pageSize: rowsPerPage }),
+    { keepPreviousData: true }
+  );
 
   const [editedCity, setEditedCity] = useState(null);
   const [isEditing, setIsEditing] = useState(false);
@@ -26,27 +35,15 @@ const City = () => {
     console.log("Countries:", countries?.data);
   }, [countries]);
 
-  const createCity = useMutation(
-    async (data) => {
-      console.log("Creating city with data:", data);
-      const country = countries?.data?.find((c) => c.id === data.countryId);
-      console.log("Matched country:", country);
-      if (!country) {
-        throw new Error("Country not found");
-      }
-      return cityApi.createCity(data);
+  const createCity = useMutation(cityApi.createCity, {
+    onSuccess: () => {
+      queryClient.invalidateQueries("cities");
+      setMessage({ type: "success", text: "City created successfully!" });
     },
-    {
-      onSuccess: () => {
-        queryClient.invalidateQueries("cities");
-        setMessage({ type: "success", text: "City created successfully!" });
-      },
-      onError: (error) => {
-        console.error("Error creating city:", error);
-        setMessage({ type: "error", text: "Failed to create city." });
-      },
-    }
-  );
+    onError: () => {
+      setMessage({ type: "error", text: "Failed to create city." });
+    },
+  });
 
   const updateCity = useMutation(
     ({ id, data }) => cityApi.updateCity({ id, data }),
@@ -57,8 +54,7 @@ const City = () => {
         setEditedCity(null);
         setMessage({ type: "success", text: "City updated successfully!" });
       },
-      onError: (error) => {
-        console.error("Error updating city:", error);
+      onError: () => {
         setMessage({ type: "error", text: "Failed to update city." });
       },
     }
@@ -69,8 +65,7 @@ const City = () => {
       queryClient.invalidateQueries("cities");
       setMessage({ type: "success", text: "City deleted successfully!" });
     },
-    onError: (error) => {
-      console.error("Error deleting city:", error);
+    onError: () => {
       setMessage({ type: "error", text: "Failed to delete city." });
     },
   });
@@ -91,6 +86,19 @@ const City = () => {
     });
   };
 
+  const handleChangePage = (event, newPage) => {
+    setPage(newPage);
+  };
+
+  const handleChangeRowsPerPage = (event) => {
+    setRowsPerPage(parseInt(event.target.value, 10));
+    setPage(0); // Reset to first page
+  };
+
+  const handleCloseMessage = () => {
+    setMessage(null);
+  };
+
   if (isLoading || isLoadingCountries) {
     return (
       <div className="flex justify-center items-center h-screen">
@@ -108,12 +116,27 @@ const City = () => {
   if (error) {
     return (
       <div className="flex justify-center items-center h-screen bg-red-100 p-4 rounded">
+        <svg
+          xmlns="http://www.w3.org/2000/svg"
+          className="h-12 w-12 text-red-600"
+          fill="none"
+          viewBox="0 0 24 24"
+          stroke="currentColor"
+        >
+          <path
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            strokeWidth={2}
+            d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+          />
+        </svg>
         <p className="text-lg font-medium text-red-600">Error loading cities</p>
       </div>
     );
   }
 
   const cities = data?.data || [];
+  const totalCities = data?.total || 0; // Assuming total number of cities is provided
 
   return (
     <div className="max-w-2xl mx-auto p-4">
@@ -126,13 +149,19 @@ const City = () => {
       </button>
       {message && (
         <div
-          className={`mt-4 p-4 rounded ${
+          className={`mt-4 p-4 rounded relative ${
             message.type === "success"
               ? "bg-green-100 text-green-700"
               : "bg-red-100 text-red-700"
           }`}
         >
           {message.text}
+          <button
+            onClick={handleCloseMessage}
+            className="absolute top-0 right-0 mt-2 mr-2 text-lg font-bold"
+          >
+            <CloseIcon />
+          </button>
         </div>
       )}
       <ul className="divide-y divide-gray-200 overflow-auto h-80 w-100 bg-white rounded shadow-md p-4 mt-4">
@@ -165,6 +194,26 @@ const City = () => {
           </li>
         ))}
       </ul>
+      <TablePagination
+        component="div"
+        count={totalCities}
+        page={page}
+        onPageChange={handleChangePage}
+        rowsPerPage={rowsPerPage}
+        onRowsPerPageChange={handleChangeRowsPerPage}
+        rowsPerPageOptions={[3, 5, 10]}
+        labelRowsPerPage="Rows per page"
+        labelDisplayedRows={({ from, to, count }) =>
+          `${from}-${to} of ${count}`
+        }
+        slotProps={{
+          actions: {
+            nextButton: {
+              disabled: (page + 1) * rowsPerPage >= totalCities,
+            },
+          },
+        }}
+      />
       {editedCity && (
         <>
           <CityEditDialog
