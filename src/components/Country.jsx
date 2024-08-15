@@ -1,35 +1,37 @@
 import React, { useState } from "react";
-import { useQuery, useMutation, useQueryClient } from "react-query";
-import { Formik, Form, Field, ErrorMessage } from "formik";
-import * as Yup from "yup";
+import { useQuery, useQueryClient, useMutation } from "react-query";
 import countryApi from "../api/countryApi";
 import EditDialog from "../Dialogs/EditDialog";
 import DeleteDialog from "../Dialogs/DeleteDialog";
+import AddDialog from "../Dialogs/AddDialog";
 import EditIcon from "@mui/icons-material/Edit";
 import DeleteIcon from "@mui/icons-material/Delete";
 
-const formikSchema = Yup.object().shape({
-  name: Yup.string().required("Name is required"),
-  flag: Yup.object().shape({
-    file_name: Yup.string().required("Flag file name is required"),
-    file_content: Yup.string().required("Flag file content is required"),
-    file_extension: Yup.string().required("Flag file extension is required"),
-  }),
-});
-
 const Country = ({ selectedImage }) => {
   const queryClient = useQueryClient();
-  const { data, error, isLoading } = useQuery(
-    "countries",
-    countryApi.getAllCountries
+  const [pageIndex, setPageIndex] = useState(1); // Set initial page index to 1
+  const [pageSize, setPageSize] = useState(3); // Set page size to 3
+
+  const { data, error, isLoading, isFetching } = useQuery(
+    ["countries", pageIndex],
+    () => countryApi.getAllCountries({ pageIndex, pageSize }),
+    { keepPreviousData: true }
   );
 
   const [editedCountry, setEditedCountry] = useState(null);
   const [isEditing, setIsEditing] = useState(false);
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
+  const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
+  const [message, setMessage] = useState(null);
 
   const createCountry = useMutation(countryApi.createCountry, {
-    onSuccess: () => queryClient.invalidateQueries("countries"),
+    onSuccess: () => {
+      queryClient.invalidateQueries("countries");
+      setMessage({ type: "success", text: "Country created successfully!" });
+    },
+    onError: () => {
+      setMessage({ type: "error", text: "Failed to create country." });
+    },
   });
 
   const updateCountry = useMutation(
@@ -39,12 +41,22 @@ const Country = ({ selectedImage }) => {
         queryClient.invalidateQueries("countries");
         setIsEditing(false);
         setEditedCountry(null);
+        setMessage({ type: "success", text: "Country updated successfully!" });
+      },
+      onError: () => {
+        setMessage({ type: "error", text: "Failed to update country." });
       },
     }
   );
 
   const deleteCountry = useMutation(countryApi.deleteCountry, {
-    onSuccess: () => queryClient.invalidateQueries("countries"),
+    onSuccess: () => {
+      queryClient.invalidateQueries("countries");
+      setMessage({ type: "success", text: "Country deleted successfully!" });
+    },
+    onError: () => {
+      setMessage({ type: "error", text: "Failed to delete country." });
+    },
   });
 
   const handleEdit = (country) => {
@@ -53,21 +65,6 @@ const Country = ({ selectedImage }) => {
   };
 
   const handleDelete = (id) => deleteCountry.mutate(id);
-
-  const handleFileChange = (event, setFieldValue) => {
-    const file = event.target.files[0];
-    if (file) {
-      const reader = new FileReader();
-      reader.readAsDataURL(file);
-      reader.onload = () => {
-        const base64String = reader.result.split(",")[1];
-        setFieldValue("flag.file_name", file.name);
-        setFieldValue("flag.file_content", base64String);
-        setFieldValue("flag.file_extension", file.name.split(".").pop());
-      };
-      reader.onerror = (error) => console.error("Error reading file:", error);
-    }
-  };
 
   const handleSave = (updatedCountry) => {
     updateCountry.mutate({
@@ -122,72 +119,29 @@ const Country = ({ selectedImage }) => {
   }
 
   const countries = data?.data || [];
+  const totalPages = data?.total_pages || 0;
 
   return (
     <div className="max-w-2xl mx-auto p-4">
       <h1 className="text-2xl font-bold mb-4">Countries</h1>
-      <Formik
-        initialValues={{
-          name: "",
-          flag: {
-            file_name: "",
-            file_content: "",
-            file_extension: "",
-          },
-        }}
-        validationSchema={formikSchema}
-        onSubmit={(values, { resetForm }) => {
-          if (isEditing && editedCountry) {
-            updateCountry.mutate({ id: editedCountry.id, data: values });
-          } else {
-            createCountry.mutate(values);
-          }
-          resetForm();
-          setIsEditing(false);
-          setEditedCountry(null);
-        }}
+      <button
+        onClick={() => setIsAddDialogOpen(true)}
+        className="bg-gradient-to-r from-green-400 to-blue-500 text-white font-semibold py-2 px-4 rounded shadow-md hover:from-green-500 hover:to-blue-600 transition duration-300"
       >
-        {({ setFieldValue }) => (
-          <Form className="mb-4">
-            <div className="mb-2">
-              <Field
-                type="text"
-                name="name"
-                placeholder="Name"
-                className="w-full p-2 border border-gray-300 rounded"
-              />
-              <ErrorMessage
-                name="name"
-                component="div"
-                className="text-red-500 text-sm"
-              />
-            </div>
-            <div className="mb-2">
-              <input
-                type="file"
-                name="flag.file_content"
-                onChange={(event) => handleFileChange(event, setFieldValue)}
-                className="w-full p-2 border border-gray-300 rounded"
-              />
-              <ErrorMessage
-                name="flag.file_content"
-                component="div"
-                className="text-red-500 text-sm"
-              />
-            </div>
-            <Field type="hidden" name="flag.file_name" />
-            <Field type="hidden" name="flag.file_content" />
-            <Field type="hidden" name="flag.file_extension" />
-            <button
-              type="submit"
-              className="bg-blue-500 text-white p-2 rounded"
-            >
-              {isEditing ? "Update Country" : "Add Country"}
-            </button>
-          </Form>
-        )}
-      </Formik>
-      <ul className="divide-y divide-gray-200 overflow-auto h-80 w-100 bg-white rounded shadow-md p-4">
+        Add Country
+      </button>
+      {message && (
+        <div
+          className={`mt-4 p-4 rounded ${
+            message.type === "success"
+              ? "bg-green-100 text-green-700"
+              : "bg-red-100 text-red-700"
+          }`}
+        >
+          {message.text}
+        </div>
+      )}
+      <ul className="divide-y divide-gray-200 overflow-auto h-80 w-100 bg-white rounded shadow-md p-4 mt-4">
         {countries.map((country, index) => (
           <li
             key={country.id}
@@ -223,6 +177,27 @@ const Country = ({ selectedImage }) => {
           </li>
         ))}
       </ul>
+      <div className="flex justify-between items-center mt-4">
+        <button
+          onClick={() => setPageIndex((old) => Math.max(old - 1, 1))}
+          disabled={pageIndex === 1}
+          className="bg-gradient-to-r from-green-400 to-blue-500 text-white font-semibold py-2 px-4 rounded shadow-md hover:from-green-500 hover:to-blue-600 transition duration-300 disabled:opacity-50"
+        >
+          Previous
+        </button>
+        <span>Page {pageIndex}</span>
+        <button
+          onClick={() => {
+            if (!isFetching && countries.length === pageSize) {
+              setPageIndex((old) => old + 1);
+            }
+          }}
+          disabled={isFetching || countries.length < pageSize}
+          className="bg-gradient-to-r from-green-400 to-blue-500 text-white font-semibold py-2 px-4 rounded shadow-md hover:from-green-500 hover:to-blue-600 transition duration-300 disabled:opacity-50"
+        >
+          Next
+        </button>
+      </div>
       {editedCountry && (
         <>
           <EditDialog
@@ -239,6 +214,11 @@ const Country = ({ selectedImage }) => {
           />
         </>
       )}
+      <AddDialog
+        open={isAddDialogOpen}
+        handleClose={() => setIsAddDialogOpen(false)}
+        handleSave={(newCountry) => createCountry.mutate(newCountry)}
+      />
     </div>
   );
 };
